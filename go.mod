@@ -3,6 +3,7 @@ module github.com/fiatjaf/namechain
 go 1.15
 
 require (
+	github.com/anacrolix/missinggo v1.2.1
 	github.com/anacrolix/torrent v1.18.1
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/kr/pretty v0.2.0

@@ -2,11 +2,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"strconv"
 	"time"
 
+	"github.com/anacrolix/torrent/metainfo"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"go.etcd.io/bbolt"
@@ -51,7 +51,7 @@ func watchBitcoinBlocks() {
 	var (
 		relevantTxHash    chainhash.Hash
 		payingChild       *wire.MsgTx
-		spacechainBlockId []byte
+		spacechainBlockId metainfo.Hash
 		serializedBlock   []byte
 	)
 
@@ -106,7 +106,9 @@ func watchBitcoinBlocks() {
 		for _, out := range payingChild.TxOut {
 			if bytes.HasPrefix(out.PkScript, []byte{
 				106 /* OP_RETURN */, 14 /* 20 bytes */}) {
-				spacechainBlockId = out.PkScript[2:]
+				for i, b := range out.PkScript[2:] {
+					spacechainBlockId[i] = b
+				}
 				break
 			}
 		}
@@ -114,12 +116,9 @@ func watchBitcoinBlocks() {
 		// later we can implement a queue here to download all blocks
 		// concurrently but process sequentially.
 		// for now let's just download sequentially too.
-		log.Info().Str("id", hex.EncodeToString(spacechainBlockId)).
+		log.Info().Str("id", spacechainBlockId.HexString()).
 			Msg("downloading spacechain block")
-		serializedBlock, err = downloadBlock(spacechainBlockId)
-		if err != nil {
-			log.Fatal().Err(err).Msg("failed to download block")
-		}
+		serializedBlock = <-downloadBlock(spacechainBlockId)
 
 		err = processBlock(serializedBlock)
 		if err != nil {

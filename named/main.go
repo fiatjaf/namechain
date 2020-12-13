@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/fiatjaf/namechain/common"
 	"github.com/kr/pretty"
 	"github.com/mitchellh/go-homedir"
 	"github.com/rs/zerolog"
@@ -15,14 +16,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type Config struct {
-	datadir string
-
-	BitcoinRPC string `yaml:"bitcoinrpc"` // 'http://user:pass@localhost:18843'
-}
-
 var log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
-var config Config
+var config common.Config
 var db *bbolt.DB
 var bitcoin *rpcclient.Client
 
@@ -34,12 +29,12 @@ var (
 
 func main() {
 	// find datadir
-	flag.StringVar(&config.datadir, "datadir", "~/.namechain", "the base directory we will use to read your config file from and store data into.")
+	flag.StringVar(&config.DataDir, "datadir", "~/.namechain", "the base directory we will use to read your config file from and store data into.")
 	flag.Parse()
-	config.datadir, _ = homedir.Expand(config.datadir)
+	config.DataDir, _ = homedir.Expand(config.DataDir)
 
 	// read config file
-	configFile := filepath.Join(config.datadir, "config.yaml")
+	configFile := filepath.Join(config.DataDir, "config.yaml")
 	configData, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		log.Info().Err(err).Str("path", configFile).
@@ -50,7 +45,7 @@ func main() {
 	pretty.Log(config)
 
 	// initiate database
-	dbpath := filepath.Join(config.datadir, "db.bolt")
+	dbpath := filepath.Join(config.DataDir, "db.bolt")
 	db, err = bbolt.Open(dbpath, 0644, nil)
 	if err != nil {
 		log.Fatal().Err(err).Str("path", dbpath).Msg("failed to open database")
