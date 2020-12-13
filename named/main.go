@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,11 +12,10 @@ import (
 	"github.com/rs/zerolog"
 	rpcclient "github.com/stevenroose/go-bitcoin-core-rpc"
 	"go.etcd.io/bbolt"
-	"gopkg.in/yaml.v2"
 )
 
 var log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
-var config common.Config
+var config *common.Config
 var db *bbolt.DB
 var bitcoin *rpcclient.Client
 
@@ -28,20 +26,16 @@ var (
 )
 
 func main() {
+	var err error
+	config = &common.Config{}
+
 	// find datadir
 	flag.StringVar(&config.DataDir, "datadir", "~/.namechain", "the base directory we will use to read your config file from and store data into.")
 	flag.Parse()
 	config.DataDir, _ = homedir.Expand(config.DataDir)
 
 	// read config file
-	configFile := filepath.Join(config.DataDir, "config.yaml")
-	configData, err := ioutil.ReadFile(configFile)
-	if err != nil {
-		log.Info().Err(err).Str("path", configFile).
-			Msg("error reading config file, will attempt to create it")
-		ioutil.WriteFile(configFile, []byte(""), 0644)
-	}
-	yaml.Unmarshal(configData, &config)
+	config.ReadConfig()
 	pretty.Log(config)
 
 	// initiate database
@@ -65,5 +59,11 @@ func main() {
 			Msg("failed to connect to bitcoind RPC")
 	}
 
+	// monitor the bitcoin chain
+	// this will also give us all the spacechain blocks
 	go watchBitcoinBlocks()
+
+	// listen for rpc commands
+	// this will also block here
+	listenRPC()
 }

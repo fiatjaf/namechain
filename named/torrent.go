@@ -19,7 +19,7 @@ func downloadBlock(infohash metainfo.Hash) chan []byte {
 	log := log.With().Stringer("block-id", infohash).Logger()
 
 	blockchan := make(chan []byte, 1)
-	bt, err := common.TorrentClient(&config)
+	bt, err := common.TorrentClient(config)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to start torrent client")
 	}
