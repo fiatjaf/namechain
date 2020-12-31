@@ -1,10 +1,17 @@
 package common
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"io/ioutil"
 	"net"
 	"path/filepath"
 
 	"github.com/anacrolix/torrent"
+	"github.com/anacrolix/torrent/bencode"
+	"github.com/anacrolix/torrent/metainfo"
 )
 
 func TorrentClient(config *Config) (*torrent.Client, error) {
@@ -27,4 +34,35 @@ func TorrentClient(config *Config) (*torrent.Client, error) {
 	}
 
 	return client, nil
+}
+
+func blockTorrentHash(serializedBlock []byte) (metainfo.Hash, error) {
+	mi := metainfo.MetaInfo{
+		AnnounceList: make([][]string, 0),
+	}
+
+	blockSize := len(serializedBlock)
+	blockHash := sha256.Sum256(serializedBlock)
+
+	info := metainfo.Info{
+		PieceLength: 256 * 1024,
+		Files: []metainfo.FileInfo{
+			{Length: int64(blockSize), Path: []string{hex.EncodeToString(blockHash[:])}},
+		},
+	}
+
+	err := info.GeneratePieces(func(fi metainfo.FileInfo) (io.ReadCloser, error) {
+		return ioutil.NopCloser(bytes.NewBuffer(serializedBlock)), nil
+	})
+	if err != nil {
+		return metainfo.Hash{}, err
+	}
+
+	mi.InfoBytes, err = bencode.Marshal(info)
+	if err != nil {
+		return metainfo.Hash{}, err
+	}
+
+	infohash := mi.HashInfoBytes()
+	return infohash, nil
 }

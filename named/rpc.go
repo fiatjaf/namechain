@@ -28,16 +28,22 @@ func handleRPC(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.ID = req.ID
 
+	var result interface{}
 	switch req.Method {
 	case "getinfo":
-		resp.Result = struct {
-		}{}
-	case "publishblock":
-		resp.Result = struct {
-		}{}
+		result, err = RPCGetInfo(req.Params)
+	case "mine":
+		result, err = RPCMine(req.Params)
 	default:
 		resp.Error.Code = -32601
 		resp.Error.Message = "method not found: '" + req.Method + "'"
+	}
+
+	if err == nil {
+		resp.Result = result
+	} else {
+		resp.Error.Message = err.Error()
+		resp.Error.Code = 5000
 	}
 
 	json.NewEncoder(w).Encode(resp)

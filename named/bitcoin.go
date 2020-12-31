@@ -2,14 +2,13 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"strconv"
 	"time"
 
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
-	"go.etcd.io/bbolt"
+	"github.com/dgraph-io/badger"
 )
 
 const (
@@ -27,18 +26,22 @@ func watchBitcoinBlocks() {
 	var lastSpottedTxid *chainhash.Hash
 
 	// load checkpoints
-	if err := db.View(func(txn *bbolt.Tx) error {
-		bucket := txn.Bucket(BUCKET_KV)
-		if v := bucket.Get([]byte(LAST_SCANNED_BLOCK)); v == nil {
+	if err := kvdb.View(func(txn *badger.Txn) error {
+		if v, err := txn.Get([]byte(LAST_SCANNED_BLOCK)); err == badger.ErrKeyNotFound {
 			lastScannedBlock = GENESIS_BLOCK
 			lastSpottedTxid, _ = chainhash.NewHashFromStr(GENESIS_TXID)
+		} else if err != nil {
+			return err
 		} else {
-			lastScannedBlock, _ = strconv.Atoi(string(v))
+			lastScannedBlock, _ = strconv.Atoi(v.String())
 
-			if v := bucket.Get([]byte(LAST_SEEN_TXID)); v == nil {
-				return errors.New("something is wrong!")
+			if v, err := txn.Get([]byte(LAST_SEEN_TXID)); err != nil {
+				return err
 			} else {
-				lastSpottedTxid.SetBytes(v)
+				v.Value(func(val []byte) error {
+					lastSpottedTxid.SetBytes(val)
+					return nil
+				})
 			}
 		}
 
@@ -120,7 +123,7 @@ func watchBitcoinBlocks() {
 			Msg("downloading spacechain block")
 		serializedBlock = <-downloadBlock(spacechainBlockId)
 
-		err = processBlock(serializedBlock)
+		err = addBlock(serializedBlock)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to process block")
 		}
@@ -130,17 +133,15 @@ func watchBitcoinBlocks() {
 
 	saveCheckpoints:
 		// save checkpoints
-		if err := db.Update(func(txn *bbolt.Tx) error {
-			bucket := txn.Bucket(BUCKET_KV)
-
-			if err := bucket.Put(
+		if err := kvdb.Update(func(txn *badger.Txn) error {
+			if err := txn.Set(
 				[]byte(LAST_SCANNED_BLOCK),
 				[]byte(strconv.Itoa(lastScannedBlock)),
 			); err != nil {
 				return err
 			}
 
-			if err := bucket.Put(
+			if err := txn.Set(
 				[]byte(LAST_SEEN_TXID),
 				relevantTxHash[:],
 			); err != nil {

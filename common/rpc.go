@@ -1,9 +1,9 @@
 package common
 
 type RPCRequest struct {
-	ID     interface{} `json:"id"`
-	Method string      `json:"method"`
-	Params interface{} `json:"params"`
+	ID     interface{}            `json:"id"`
+	Method string                 `json:"method"`
+	Params map[string]interface{} `json:"params"`
 }
 
 type RPCResponse struct {

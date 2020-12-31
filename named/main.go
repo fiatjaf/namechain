@@ -2,27 +2,28 @@ package main
 
 import (
 	"flag"
-	"net/url"
 	"os"
 	"path/filepath"
 
+	"github.com/dgraph-io/badger"
 	"github.com/fiatjaf/namechain/common"
 	"github.com/kr/pretty"
 	"github.com/mitchellh/go-homedir"
 	"github.com/rs/zerolog"
 	rpcclient "github.com/stevenroose/go-bitcoin-core-rpc"
-	"go.etcd.io/bbolt"
 )
 
 var log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
 var config *common.Config
-var db *bbolt.DB
+var kvdb *badger.DB
+var blocksdb *badger.DB
+var chainstatedb *badger.DB
 var bitcoin *rpcclient.Client
 
 var (
-	BUCKET_KV         = []byte("kv")
-	BUCKET_BLOCKS     = []byte("blocks")
-	BUCKET_CHAINSTATE = []byte("chainstate")
+	DB_KV         = "kv.db"
+	DB_BLOCKS     = "blocks.db"
+	DB_CHAINSTATE = "chainstate.db"
 )
 
 func main() {
@@ -38,24 +39,33 @@ func main() {
 	config.ReadConfig()
 	pretty.Log(config)
 
-	// initiate database
-	dbpath := filepath.Join(config.DataDir, "db.bolt")
-	db, err = bbolt.Open(dbpath, 0644, nil)
+	// initiate databases
+	dbpath := filepath.Join(config.DataDir, DB_KV)
+	kvdb, err = badger.Open(badger.DefaultOptions(dbpath))
+	if err != nil {
+		log.Fatal().Err(err).Str("path", dbpath).Msg("failed to open database")
+	}
+	dbpath = filepath.Join(config.DataDir, DB_BLOCKS)
+	blocksdb, err = badger.Open(badger.DefaultOptions(dbpath))
+	if err != nil {
+		log.Fatal().Err(err).Str("path", dbpath).Msg("failed to open database")
+	}
+	dbpath = filepath.Join(config.DataDir, DB_CHAINSTATE)
+	chainstatedb, err = badger.Open(badger.DefaultOptions(dbpath))
 	if err != nil {
 		log.Fatal().Err(err).Str("path", dbpath).Msg("failed to open database")
 	}
 
+	// load chainstate to memory because why not
+	if err := loadChainState(); err != nil {
+		log.Fatal().Err(err).Msg("failed to load chainstate")
+	}
+
 	// initiate bitcoind connection
-	btcParams, _ := url.Parse(config.BitcoinRPC)
-	password, _ := btcParams.User.Password()
-	bitcoin, _ = rpcclient.New(&rpcclient.ConnConfig{
-		Host: btcParams.Host,
-		User: btcParams.User.Username(),
-		Pass: password,
-	})
+	bitcoin = common.OpenBitcoinRPC(config.BitcoinRPC)
 	_, err = bitcoin.GetBlockChainInfo()
 	if err != nil {
-		log.Fatal().Err(err).Interface("params", btcParams).
+		log.Fatal().Err(err).Interface("params", config.BitcoinRPC).
 			Msg("failed to connect to bitcoind RPC")
 	}
 
